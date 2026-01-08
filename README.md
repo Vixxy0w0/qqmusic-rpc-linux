@@ -68,22 +68,28 @@ journalctl --user -u qqmusic-rpc -f
 ## Uninstall | 卸载
 
 If you want to remove the service completely:
+
 如果你想彻底删除本插件：
 
+### 1. Stop and disable the service | 停止并禁用服务
+
 ```bash
-# 1. Stop and disable the service
-# 停止并禁用服务
 systemctl --user stop qqmusic-rpc
 systemctl --user disable qqmusic-rpc
 
-# 2. Remove files and shortcuts
-# 删除文件和快捷方式
+```
+
+### 2. Remove files and shortcuts | 删除文件和快捷方式
+```bash
 rm ~/.config/systemd/user/qqmusic-rpc.service
 rm ~/.local/bin/qqmusic-rpc
 rm -rf ~/.local/share/qqmusic-rpc
 
-# 3. Reload system settings
-# 刷新系统设置
+```
+
+### 3. Reload system settings | 刷新系统设置
+
+```bash
 systemctl --user daemon-reload
 
 ```
