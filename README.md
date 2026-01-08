@@ -3,7 +3,8 @@
 **A lightweight, zero-config Rich Presence for QQ Music on Linux.**
 **专为 Linux 用户打造的 QQ 音乐 Discord RPC 插件。零配置，装完即用。**
 
-<img width="327" height="138" alt="Screenshot From 2026-01-08 11-47-31" src="https://github.com/user-attachments/assets/78141f7a-7b23-48df-82c0-a409fd747fe3" />
+<img width="327" height="138" alt="Showcase" src="https://github.com/user-attachments/assets/73360520-04df-4dcb-b815-8573806b755b" />
+
 
 
 ## Features | 功能特点
