@@ -1,4 +1,4 @@
-# QQ Music Discord RPC (Linux) | QQ音乐 Discord 同步
+# QQ Music Discord Rich Presence (Linux) | QQ音乐 Discord 同步
 
 **A lightweight, zero-config Rich Presence for QQ Music on Linux.**
 **专为 Linux 用户打造的 QQ 音乐 Discord RPC 插件。零配置，装完即用。**
