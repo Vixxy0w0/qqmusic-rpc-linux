@@ -22,7 +22,7 @@
 
 ### 1. Download | 下载
 ```bash
-git clone [https://github.com/Vixxy0w0/qqmusic-rpc-linux.git](https://github.com/Vixxy0w0/qqmusic-rpc-linux.git)
+git clone https://github.com/Vixxy0w0/qqmusic-rpc-linux.git
 cd qqmusic-rpc-linux
 
 ```
