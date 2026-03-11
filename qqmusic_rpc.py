@@ -5,7 +5,12 @@ from pypresence import Presence, ActivityType
 
 # --- CONFIGURATION ---
 CLIENT_ID = '1458558997828468798'
+POLL_INTERVAL = 5  # seconds between checks
 # ---------------------
+
+# Simple in-memory album art cache
+_art_cache = {}
+
 
 def connect_discord():
     try:
@@ -17,35 +22,62 @@ def connect_discord():
         print(f"❌ Failed to connect to Discord: {e}")
         return None
 
-def get_qq_art(title, artist):
-    if not title or "Unknown" in title: return "qqmusic_logo"
 
-    # Query cleanup
+def get_qq_art(title, artist):
+    """Fetch album art URL from QQ Music CDN, with in-memory caching."""
+    cache_key = (title, artist)
+    if cache_key in _art_cache:
+        return _art_cache[cache_key]
+
+    fallback = "qqmusic_logo"
+
+    if not title or "Unknown" in title:
+        _art_cache[cache_key] = fallback
+        return fallback
+
     query = f"{title} {artist}".strip()
 
     try:
-        search_url = f"https://c.y.qq.com/soso/fcgi-bin/client_search_cp?p=1&n=1&w={query}&format=json"
+        search_url = (
+            f"https://c.y.qq.com/soso/fcgi-bin/client_search_cp"
+            f"?p=1&n=1&w={query}&format=json"
+        )
         res = requests.get(search_url, timeout=3).json()
 
-        if 'data' in res and 'song' in res['data'] and 'list' in res['data']['song']:
-            song_list = res['data']['song']['list']
-            if song_list:
-                album_mid = song_list[0]['albummid']
-                return f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+        song_list = (
+            res.get('data', {})
+               .get('song', {})
+               .get('list', [])
+        )
+        if song_list:
+            album_mid = song_list[0]['albummid']
+            url = f"https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg"
+            _art_cache[cache_key] = url
+            return url
 
-        return "qqmusic_logo"
-    except:
-        return "qqmusic_logo"
+    except Exception:
+        pass  # Network hiccup or bad response — fall through to fallback
+
+    _art_cache[cache_key] = fallback
+    return fallback
+
 
 def get_best_player(bus):
-    all_names = bus.list_names()
-    candidates = [n for n in all_names if "org.mpris.MediaPlayer2" in n]
+    """
+    Scan MPRIS players and return the best candidate.
 
-    # BLOCKLIST
+    Priority: Playing > Paused > None
+    Returns a dict with keys: title, artist, album, status
+    """
     BROWSER_BLOCKLIST = [
         "helium", "firefox", "google chrome", "brave", "microsoft edge",
         "zen", "librewolf", "vivaldi", "opera", "waterfox", "tor browser"
     ]
+
+    all_names = bus.list_names()
+    candidates = [n for n in all_names if "org.mpris.MediaPlayer2" in n]
+
+    paused_candidate = None  # Hold onto a paused player as fallback
 
     for name in candidates:
         try:
@@ -56,76 +88,107 @@ def get_best_player(bus):
             identity = str(props.Get('org.mpris.MediaPlayer2', 'Identity')).lower()
             desktop_entry = ""
             try:
-                desktop_entry = str(props.Get('org.mpris.MediaPlayer2', 'DesktopEntry')).lower()
-            except: pass
+                desktop_entry = str(
+                    props.Get('org.mpris.MediaPlayer2', 'DesktopEntry')
+                ).lower()
+            except Exception:
+                pass
 
-            if any(b in identity for b in BROWSER_BLOCKLIST) or any(b in desktop_entry for b in BROWSER_BLOCKLIST):
+            if (any(b in identity for b in BROWSER_BLOCKLIST)
+                    or any(b in desktop_entry for b in BROWSER_BLOCKLIST)):
                 continue
 
             # --- 2. BEHAVIORAL CHECK ---
             try:
-                can_go_next = bool(props.Get('org.mpris.MediaPlayer2.Player', 'CanGoNext'))
-                can_go_prev = bool(props.Get('org.mpris.MediaPlayer2.Player', 'CanGoPrevious'))
-
+                can_go_next = bool(
+                    props.Get('org.mpris.MediaPlayer2.Player', 'CanGoNext')
+                )
                 if not can_go_next:
                     continue
             except Exception:
-
                 continue
 
-            # --- 3. PLAYBACK STATUS CHECK ---
+            # --- 3. PLAYBACK STATUS ---
+            playback_status = str(
+                props.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus')
+            )
+            if playback_status == "Stopped":
+                continue  # Stopped = no presence at all
+
+            # --- 4. METADATA SANITY CHECKS ---
             metadata = props.Get('org.mpris.MediaPlayer2.Player', 'Metadata')
-            playback_status = str(props.Get('org.mpris.MediaPlayer2.Player', 'PlaybackStatus'))
 
-            if playback_status != "Playing":
-                continue
-
-            # --- 4. CHROMIUM URL FILTER ---
-            title = str(metadata.get('xesam:title', 'Unknown'))
             url = str(metadata.get('xesam:url', '')).lower()
-
             if "http://" in url or "https://" in url:
-                continue
+                continue  # Chromium/browser audio leak
 
-            if not title or title in ["Unknown", "Unknown Title", ""]:
+            title = str(metadata.get('xesam:title', ''))
+            if not title or title in ["Unknown", "Unknown Title"]:
                 continue
 
             artist_list = metadata.get('xesam:artist', ['Unknown Artist'])
-            artist = str(artist_list[0]) if isinstance(artist_list, list) and artist_list else str(artist_list)
+            artist = (
+                str(artist_list[0])
+                if isinstance(artist_list, list) and artist_list
+                else str(artist_list)
+            )
             album = str(metadata.get('xesam:album', ''))
 
-            return {
+            result = {
                 'title': title,
                 'artist': artist,
-                'album': album
+                'album': album,
+                'status': playback_status,  # "Playing" or "Paused"
             }
+
+            if playback_status == "Playing":
+                return result  # Best possible match, return immediately
+            elif playback_status == "Paused" and paused_candidate is None:
+                paused_candidate = result  # Save it
+
         except Exception:
             continue
 
-    return None
+    return paused_candidate  # None if nothing found
+
 
 # --- MAIN LOOP ---
 RPC = connect_discord()
 bus = dbus.SessionBus()
+
 last_track = ""
-last_status = "active"
+last_status = "cleared"   # "playing" | "paused" | "cleared"
+play_start_time = None
 
 print("🚀 QQMusic RPC Service Started")
 
 while True:
     if not RPC:
         RPC = connect_discord()
-        time.sleep(5)
+        time.sleep(POLL_INTERVAL)
         continue
 
     current_song = get_best_player(bus)
 
     if current_song:
+        is_playing = current_song['status'] == "Playing"
+        track_changed = current_song['title'] != last_track
+        play_state_changed = (
+            (is_playing and last_status == "paused")
+            or (not is_playing and last_status == "playing")
+        )
 
-        if current_song['title'] != last_track or last_status == "cleared":
-            print(f"🎵 Updating: {current_song['title']}")
+        if track_changed or play_state_changed or last_status == "cleared":
+            label = "🎵 Playing" if is_playing else "⏸️  Paused"
+            print(f"{label}: {current_song['title']} — {current_song['artist']}")
 
             art_url = get_qq_art(current_song['title'], current_song['artist'])
+
+            # Reset the elapsed timer only when a new track starts playing
+            if track_changed and is_playing:
+                play_start_time = time.time()
+            elif track_changed and not is_playing:
+                play_start_time = None  # Paused on a new track — no timer yet
 
             try:
                 RPC.update(
@@ -133,25 +196,28 @@ while True:
                     details=current_song['title'],
                     state=current_song['artist'],
                     large_image=art_url,
-                    large_text=current_song['album'] if current_song['album'] else "QQMusic",
+                    large_text=current_song['album'] or "QQMusic",
                     small_image="qqmusic_logo",
-                    start=time.time()
+                    # Show elapsed time only when actively playing
+                    start=play_start_time if is_playing else None,
                 )
                 last_track = current_song['title']
-                last_status = "active"
+                last_status = "playing" if is_playing else "paused"
+
             except Exception as e:
-                print(f"❌ Error: {e}")
-                # If update fails, force a reconnect on next loop
-                RPC = None
+                print(f"❌ RPC update failed: {e}")
+                RPC = None  # Force reconnect on next loop
+
     else:
-        # No song found
-        if last_status == "active":
-            print("⏸️ Playback stopped/paused. Clearing status.")
+        # Nothing playing or paused — clear presence
+        if last_status != "cleared":
+            print("⏹️  Playback stopped. Clearing status.")
             try:
                 RPC.clear()
-            except:
+            except Exception:
                 pass
             last_status = "cleared"
-            last_track = "" # Reset
+            last_track = ""
+            play_start_time = None
 
-    time.sleep(5)
+    time.sleep(POLL_INTERVAL)
