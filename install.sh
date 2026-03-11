@@ -80,6 +80,7 @@ echo "📦 Installing dependencies into venv..."
 
 # 5. Create a wrapper script in ~/bin so 'qqmusic-rpc' works from the terminal
 echo "🔗 Creating command shortcut..."
+rm -f "$BIN_DIR/$APP_NAME"
 cat > "$BIN_DIR/$APP_NAME" <<WRAPPER
 #!/bin/bash
 exec "$VENV_PYTHON" "$INSTALL_DIR/qqmusic_rpc.py" "\$@"
