@@ -5,7 +5,20 @@
 [![English](https://img.shields.io/badge/README-English-blue)](#english)
 [![简体中文](https://img.shields.io/badge/README-简体中文-red)](#简体中文)
 
-![showcase](https://github.com/user-attachments/assets/73360520-04df-4dcb-b815-8573806b755b)
+<div align="center">
+
+<table>
+<tr>
+<td><img src="https://github.com/user-attachments/assets/43b5762a-58ed-4134-bcd0-7dde65dacc0a" width="350"/></td>
+<td><img src="https://github.com/user-attachments/assets/135574da-99e1-49e7-8a5b-d45b6f15bf4e" width="350"/></td>
+</tr>
+<tr>
+<td align="center">QQ Music | QQ 音乐</td>
+<td align="center">NetEase Cloud Music | 网易云音乐</td>
+</tr>
+</table>
+
+</div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://www.python.org/)
