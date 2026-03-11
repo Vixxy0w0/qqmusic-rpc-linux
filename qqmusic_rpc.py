@@ -1,34 +1,46 @@
 import time
+import re
 import dbus
 import requests
-import re
 from pypresence import Presence, ActivityType
 
-CLIENT_ID = '1458558997828468798'
 POLL_INTERVAL = 5
 
+PLAYERS = {
+    "netease": {
+        "client_id": "1481279636468928655",
+        "small_image": "netease_logo",
+        "name": "NetEase Cloud Music",
+    },
+    "qqmusic": {
+        "client_id": "1458558997828468798",
+        "small_image": "qqmusic_logo",
+        "name": "QQ Music",
+    },
+}
+
 _art_cache = {}
+_current_player_key = None
+RPC = None
 
 
-def connect_discord():
+def connect_discord(client_id):
     try:
-        rpc = Presence(CLIENT_ID)
+        rpc = Presence(client_id)
         rpc.connect()
-        print("✅ Connected to Discord RPC!")
+        print(f"✅ Connected to Discord RPC!")
         return rpc
     except Exception as e:
         print(f"❌ Failed to connect to Discord: {e}")
         return None
 
 
-def get_art(title, artist):
+def get_itunes_art(title, artist):
     cache_key = (title, artist)
     if cache_key in _art_cache:
         return _art_cache[cache_key]
 
     queries = [f"{title} {artist}", title]
-
-    # If title has Chinese characters, also try with them stripped out
     stripped = re.sub(r'[\u4e00-\u9fff]+', '', title).strip()
     if stripped and stripped != title:
         queries.append(f"{stripped} {artist}")
@@ -50,8 +62,8 @@ def get_art(title, artist):
         except Exception:
             pass
 
-    _art_cache[cache_key] = "qqmusic_logo"
-    return "qqmusic_logo"
+    _art_cache[cache_key] = None
+    return None
 
 
 def get_best_player(bus):
@@ -99,11 +111,19 @@ def get_best_player(bus):
             artist_list = metadata.get('xesam:artist', ['Unknown Artist'])
             artist = str(artist_list[0]) if isinstance(artist_list, list) and artist_list else str(artist_list)
 
+            # Identify which player this is
+            player_key = "qqmusic"
+            for key in PLAYERS:
+                if key in identity:
+                    player_key = key
+                    break
+
             return {
                 'title': title,
                 'artist': artist,
                 'album': str(metadata.get('xesam:album', '')),
-                'status': playback_status,
+                'mpris_art': str(metadata.get('mpris:artUrl', '')),
+                'player_key': player_key,
             }
 
         except Exception:
@@ -112,35 +132,57 @@ def get_best_player(bus):
     return None
 
 
-RPC = connect_discord()
 bus = dbus.SessionBus()
 last_track = ""
 last_active = False
 play_start_time = None
 
-print("🚀 QQMusic RPC Service Started")
+print("🚀 QQ Music / NetEase RPC Service Started")
 
 while True:
-    if not RPC:
-        RPC = connect_discord()
-        time.sleep(POLL_INTERVAL)
-        continue
-
     current_song = get_best_player(bus)
 
     if current_song:
+        player_key = current_song['player_key']
+        player = PLAYERS[player_key]
+
+        # Switch Discord app if the active player changed
+        if player_key != _current_player_key:
+            if RPC:
+                try:
+                    RPC.clear()
+                    RPC.close()
+                except Exception:
+                    pass
+            print(f"🔀 Switching to {player['name']}")
+            RPC = connect_discord(player['client_id'])
+            _current_player_key = player_key
+            last_track = ""
+            last_active = False
+
+        if not RPC:
+            RPC = connect_discord(player['client_id'])
+            time.sleep(POLL_INTERVAL)
+            continue
+
         if current_song['title'] != last_track or not last_active:
-            print(f"🎵 Playing: {current_song['title']} — {current_song['artist']}")
+            print(f"🎵 {player['name']}: {current_song['title']} — {current_song['artist']}")
             play_start_time = time.time()
+
+            # Netease exposes art directly via MPRIS, QQ Music needs iTunes
+            if current_song['mpris_art'].startswith("http"):
+                art_url = current_song['mpris_art']
+            else:
+                art_url = get_itunes_art(current_song['title'], current_song['artist']) or player['small_image']
 
             try:
                 RPC.update(
                     activity_type=ActivityType.LISTENING,
                     details=current_song['title'],
                     state=current_song['artist'],
-                    large_image=get_art(current_song['title'], current_song['artist']),
-                    large_text=current_song['album'] or "QQMusic",
-                    small_image="qqmusic_logo",
+                    large_image=art_url,
+                    large_text=current_song['album'] or player['name'],
+                    small_image=player['small_image'],
                     start=play_start_time,
                 )
                 last_track = current_song['title']
