@@ -28,7 +28,7 @@ def connect_discord(client_id):
     try:
         rpc = Presence(client_id)
         rpc.connect()
-        print(f"✅ Connected to Discord RPC!")
+        print("✅ Connected to Discord RPC!")
         return rpc
     except Exception as e:
         print(f"❌ Failed to connect to Discord: {e}")
